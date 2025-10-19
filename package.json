@@ -10,6 +10,12 @@
     "lint": "bunx eslint . --ext .ts",
     "test": "bun test || echo \"No tests yet\""
   },
+  "files": [
+    "dist/**/*",
+    "protocol.spb",
+    "README.md"
+  ],
+  "prepare": "bunx tsc -p tsconfig.json",
   "keywords": [
     "sproto",
     "sproto-js",
@@ -18,6 +24,17 @@
   ],
   "author": "hanxi",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hanxi/sproto-js.git"
+  },
+  "bugs": {
+    "url": "https://github.com/hanxi/sproto-js/issues"
+  },
+  "homepage": "https://github.com/hanxi/sproto-js#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "devDependencies": {
     "typescript": "^5.0.0",
     "eslint": "^8.0.0",
