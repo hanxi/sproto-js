@@ -1,0 +1,27 @@
+{
+  "name": "sproto-js",
+  "version": "0.1.0",
+  "description": "TypeScript refactor of hanxi/sproto-js",
+  "main": "dist/sproto.js",
+  "types": "dist/sproto.d.ts",
+  "packageManager": "bun@1.0.0",
+  "scripts": {
+    "build": "bunx tsc -p tsconfig.json",
+    "lint": "bunx eslint . --ext .ts",
+    "test": "bun test || echo \"No tests yet\""
+  },
+  "keywords": [
+    "sproto",
+    "sproto-js",
+    "typescript",
+    "bun"
+  ],
+  "author": "hanxi",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "eslint": "^8.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0"
+  }
+}

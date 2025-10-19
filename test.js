@@ -1,5 +1,5 @@
 var fs = require("fs");
-var sproto = require("./sproto");
+var sproto = require("./dist/sproto.js");
 
 var filename = "./protocol.spb";
 var buffer = fs.readFileSync(filename);
