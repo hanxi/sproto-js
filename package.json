@@ -6,16 +6,16 @@
   "types": "dist/sproto.d.ts",
   "packageManager": "bun@1.0.0",
   "scripts": {
-    "build": "bunx tsc -p tsconfig.json",
-    "lint": "bunx eslint . --ext .ts",
-    "test": "bun test || echo \"No tests yet\""
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint . --ext .ts",
+    "test": "echo \"No tests yet\""
   },
   "files": [
     "dist/**/*",
     "protocol.spb",
     "README.md"
   ],
-  "prepare": "bunx tsc -p tsconfig.json",
+  "prepare": "tsc -p tsconfig.json",
   "keywords": [
     "sproto",
     "sproto-js",
