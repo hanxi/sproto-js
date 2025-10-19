@@ -1,12 +1,6 @@
-.HeaderPack {
-	protoId     0 : integer
-	requestId   1 : integer
-	ec          2 : integer
+.package {
+    type 0 : integer
+    session 1 : integer
+    ud 2 : integer
 }
 
-.BasicType {
-	number  	0 : integer
-	string  	1 : string
-	bool    	2 : boolean
-	numberList	3 : *integer
-}
