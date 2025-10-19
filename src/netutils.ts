@@ -31,9 +31,10 @@ export function arrayToArrayBuffer(bytes: ByteArray): ArrayBuffer {
  * Convert an ArrayBuffer (or an ArrayBufferView) into a numeric byte array.
  */
 export function arrayBufferToArray(buffer: ArrayBuffer | ArrayBufferView): ByteArray {
-  const u8 = buffer instanceof ArrayBuffer
-    ? new Uint8Array(buffer)
-    : new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+  const u8 =
+    buffer instanceof ArrayBuffer
+      ? new Uint8Array(buffer)
+      : new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
 
   const result: ByteArray = new Array(u8.length);
   for (let i = 0; i < u8.length; i++) result[i] = u8[i];
@@ -104,11 +105,31 @@ export function utf8Decode(bytesOrString: ByteArray | string): string | null {
 
 /**
  * Concatenate two numeric byte arrays into a new array.
+ *
+ * Robustness improvements:
+ * - Accepts null/undefined for either input and treats it as an empty array.
+ * - Accepts Uint8Array (or other ArrayBufferView) and converts to ByteArray.
+ * - Returns a fresh ByteArray.
  */
-export function concatArrays(a1: ByteArray, a2: ByteArray): ByteArray {
-  const out: ByteArray = new Array(a1.length + a2.length);
-  for (let i = 0; i < a1.length; i++) out[i] = a1[i];
-  for (let j = 0; j < a2.length; j++) out[a1.length + j] = a2[j];
+export function concatArrays(a1?: ByteArray | ArrayBufferView | null, a2?: ByteArray | ArrayBufferView | null): ByteArray {
+  // normalize inputs to ByteArray
+  const normalize = (v?: ByteArray | ArrayBufferView | null): ByteArray => {
+    if (!v) return [];
+    if (Array.isArray(v)) return v as ByteArray;
+    // ArrayBufferView (Uint8Array, etc.)
+    const view = v as ArrayBufferView;
+    const u8 = new Uint8Array(view.buffer, view.byteOffset ?? 0, view.byteLength ?? view.buffer.byteLength);
+    const out: ByteArray = new Array(u8.length);
+    for (let i = 0; i < u8.length; i++) out[i] = u8[i];
+    return out;
+  };
+
+  const b1 = normalize(a1);
+  const b2 = normalize(a2);
+
+  const out: ByteArray = new Array(b1.length + b2.length);
+  for (let i = 0; i < b1.length; i++) out[i] = b1[i];
+  for (let j = 0; j < b2.length; j++) out[b1.length + j] = b2[j];
   return out;
 }
 

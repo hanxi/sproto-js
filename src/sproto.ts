@@ -1,26 +1,24 @@
 /**
  * sproto.ts
  *
- * Refactor notes and improvements:
- * - Consistent camelCase naming for functions and variables
- * - Added explicit types and interfaces where practical
- * - Removed use of var; prefer const/let
- * - Reduced implicit `any` usage; some complex internal structures still use `unknown` or lightweight interfaces
- * - Kept original algorithm and structure to preserve behavior while improving readability and TypeScript ergonomics
+ * Rewritten and corrected full implementation for the repo.
  *
- * This file preserves the public API of the original library:
- * - createNew(bundle: ByteArray): SprotoInstance | null
- * The returned instance exposes encode/decode/pack/unpack/pencode/pdecode/host/dispatch methods.
+ * Notes:
+ * - This file is the consolidated, corrected version of sproto TypeScript.
+ * - It uses consistent function names (toWord/toDword, queryType/getProtocol, etc.)
+ * - Includes encodeObject + corrected sprotoEncode and sprotoDecode semantics.
  *
- * NOTE: This refactor focuses mainly on naming, typing, and small modernizations.
- * A deeper type-hardening pass (defining full type schemas for type/protocol descriptors) can follow.
+ * Replace your current src/sproto.ts with this file, then run:
+ *   bunx tsc -p tsconfig.json
+ *   bun run test.ts
+ *
+ * If anything else breaks, paste the new error output and I'll iterate.
  */
 
 import netutils, { ByteArray } from "./netutils";
 
 /* ---------- Types & Interfaces ---------- */
 
-/** Minimal representation of a field in a type definition */
 interface SprotoField {
   tag: number;
   type: number;
@@ -30,7 +28,6 @@ interface SprotoField {
   extra: number;
 }
 
-/** Minimal representation of a type definition */
 interface SprotoType {
   name: string | null;
   n: number;
@@ -39,7 +36,6 @@ interface SprotoType {
   f: SprotoField[] | null;
 }
 
-/** Minimal representation of a protocol entry */
 interface SprotoProtocol {
   name: string | null;
   tag: number;
@@ -47,7 +43,6 @@ interface SprotoProtocol {
   confirm: number;
 }
 
-/** Public instance returned by createNew(...) */
 interface SprotoInstance {
   queryproto(protocolName: string | number): any;
   dump(): void;
@@ -78,7 +73,7 @@ const SIZEOF_HEADER = 2;
 const SIZEOF_FIELD = 2;
 const ENCODE_DEEPLEVEL = 64;
 
-/* ---------- Helper functions (renamed, typed) ---------- */
+/* ---------- Helper functions ---------- */
 
 function toWord(stream: ByteArray): number {
   return (stream[0] & 0xff) | ((stream[1] & 0xff) << 8);
@@ -93,21 +88,7 @@ function toDword(stream: ByteArray): number {
   );
 }
 
-function countArray(stream: ByteArray): number {
-  let length = toDword(stream);
-  let n = 0;
-  stream = stream.slice(SIZEOF_LENGTH);
-  while (length > 0) {
-    if (length < SIZEOF_LENGTH) return -1;
-    const nsz = toDword(stream);
-    const tot = nsz + SIZEOF_LENGTH;
-    if (tot > length) return -1;
-    ++n;
-    stream = stream.slice(tot);
-    length -= tot;
-  }
-  return n;
-}
+/* ---------- Import helpers (type/protocol parsing) ---------- */
 
 function structField(stream: ByteArray, sz: number): number {
   if (sz < SIZEOF_LENGTH) return -1;
@@ -146,7 +127,21 @@ function calcPow(base: number, n: number): number {
   return (n & 1) !== 0 ? r * base : r;
 }
 
-/* ---------- Import helpers (type/protocol parsing) ---------- */
+function countArray(stream: ByteArray): number {
+  let length = toDword(stream);
+  let n = 0;
+  stream = stream.slice(SIZEOF_LENGTH);
+  while (length > 0) {
+    if (length < SIZEOF_LENGTH) return -1;
+    const nsz = toDword(stream);
+    const tot = nsz + SIZEOF_LENGTH;
+    if (tot > length) return -1;
+    ++n;
+    stream = stream.slice(tot);
+    length -= tot;
+  }
+  return n;
+}
 
 function importField(s: any, f: SprotoField, streamIn: ByteArray): ByteArray | null {
   let stream = streamIn.slice(0);
@@ -339,7 +334,6 @@ function createFromBundle(s: any, stream: ByteArray, sz: number): any | null {
   stream = stream.slice(SIZEOF_HEADER);
   let content = stream.slice(fn * SIZEOF_FIELD);
 
-  // The bundle contains two arrays: type array and protocol array.
   let typedata: ByteArray | null = null;
   let protocoldata: ByteArray | null = null;
 
@@ -359,7 +353,6 @@ function createFromBundle(s: any, stream: ByteArray, sz: number): any | null {
       s.protocol_n = n;
       s.proto = new Array(n);
     }
-    // move the content pointer forward
     content = content.slice(toDword(content) + SIZEOF_LENGTH);
   }
 
@@ -382,7 +375,7 @@ function createFromBundle(s: any, stream: ByteArray, sz: number): any | null {
   return s;
 }
 
-/* ---------- Packing / Unpacking utilities (renamed) ---------- */
+/* ---------- Packing / Unpacking utilities ---------- */
 
 function fillSize(data: ByteArray, offset: number, size: number): number {
   data[offset] = size & 0xff;
@@ -393,7 +386,6 @@ function fillSize(data: ByteArray, offset: number, size: number): number {
 }
 
 function encodeInteger(v: number, data: ByteArray, offset: number): number {
-  // write 4-byte integer after the 4-byte length header (original behavior)
   data[offset + 4] = v & 0xff;
   data[offset + 5] = (v >> 8) & 0xff;
   data[offset + 6] = (v >> 16) & 0xff;
@@ -414,7 +406,6 @@ function encodeUint64(v: number, data: ByteArray, offset: number): number {
 }
 
 function doubleToBinary(value: number, data: ByteArray, offset: number): number {
-  // Use DataView to write float64 (little endian) — clearer and more robust
   const buffer = new ArrayBuffer(8);
   new DataView(buffer).setFloat64(0, value, true);
   const bytes = new Uint8Array(buffer);
@@ -428,7 +419,7 @@ function binaryToDouble(bytes: ByteArray): number {
   return new DataView(u8.buffer).getFloat64(0, true);
 }
 
-/* Pack segment helpers (renamed) */
+/* Pack helpers (same algorithm) */
 
 function packSegment(src: ByteArray, srcIdx: number, dest: ByteArray, destIdx: number, destRemaining: number, ffCount: number): number {
   let header = 0;
@@ -469,8 +460,6 @@ function writeFF(src: ByteArray, srcIdx: number, dest: ByteArray, destIdx: numbe
   for (let i = 0; i < n; i++) dest[destIdx + i + 2] = src[srcIdx + i];
   for (let i = 0; i < align8N - n; i++) dest[destIdx + n + 2 + i] = 0;
 }
-
-/* sproto pack/unpack (kept algorithm intact, names improved) */
 
 function sprotoPack(src: ByteArray, srcIdx: number, dest: ByteArray, destIdx: number): number {
   const tmp: ByteArray = new Array(8);
@@ -590,7 +579,7 @@ const sproto = (() => {
   const hostPrototype: any = {};
   let headerTmp: any = {};
 
-  // small helper to find a protocol by tag with binary search
+  // helper to query protocol by tag (binary search)
   function queryProtoByTag(sp: any, tag: number) {
     let begin = 0;
     let end = sp.protocol_n;
@@ -630,7 +619,6 @@ const sproto = (() => {
     return null;
   }
 
-  // pack/unpack exports
   exportsObj.pack = function (inbuf: ByteArray): ByteArray {
     const dest: ByteArray = new Array();
     sprotoPack(inbuf, 0, dest, 0);
@@ -655,7 +643,18 @@ const sproto = (() => {
     const sp = createFromBundle(s, bundle, bundle.length);
     if (sp == null) return null;
 
-    /* ---------- Encoding/decoding engine (internal) ---------- */
+    /* ---------- Encoding engine ---------- */
+
+    function encodeObject(cb: any, args: any, data: ByteArray, dataIdx: number): number {
+      args.buffer = data;
+      args.buffer_idx = dataIdx + SIZEOF_LENGTH;
+      const sz = cb(args);
+      if (sz < 0) {
+        if (sz === -2) return 0;
+        return -1;
+      }
+      return fillSize(data, dataIdx, sz);
+    }
 
     function sprotoEncode(st: SprotoType, buffer: ByteArray, bufferIdx: number, cb: any, ud: any): number {
       const headerIdx = bufferIdx;
@@ -671,6 +670,7 @@ const sproto = (() => {
         const type = field.type;
         let value = 0;
         let sz = -1;
+
         const args: any = {
           ud,
           tagname: field.name,
@@ -684,35 +684,52 @@ const sproto = (() => {
           args.type = type & ~SPROTO_TARRAY;
           sz = encodeArray(cb, args, buffer, dataIdx);
         } else {
-          args.type = type;
-          args.index = 0;
-          args.value = 0;
-          args.length = 8;
-          args.buffer = buffer;
-          args.buffer_idx = bufferIdx;
+          const basicType = type & ~SPROTO_TARRAY;
+          switch (basicType) {
+            case FieldType.INTEGER:
+            case FieldType.DOUBLE:
+            case FieldType.BOOLEAN: {
+              args.type = basicType;
+              args.index = 0;
+              args.value = 0;
+              args.length = 8;
+              args.buffer = buffer;
+              args.buffer_idx = bufferIdx;
 
-          sz = cb(args);
-          if (sz < 0) {
-            if (sz === -2) continue; // SPROTO_CB_NIL
-            if (sz === -3) return 0; // SPROTO_CB_NOARRAY
-            return -1;
-          }
+              const ret = cb(args);
+              if (ret < 0) {
+                if (ret === -2) continue;
+                if (ret === -3) return 0;
+                return -1;
+              }
 
-          if (sz === 4) {
-            if (args.value < 0x7fff) {
-              value = (args.value + 1) * 2;
-              sz = 2;
-            } else {
-              sz = encodeInteger(args.value, buffer, dataIdx);
+              if (ret === 4) {
+                if (args.value < 0x7fff) {
+                  value = (args.value + 1) * 2;
+                  sz = 2;
+                } else {
+                  sz = encodeInteger(args.value, buffer, dataIdx);
+                }
+              } else if (ret === 8) {
+                if (basicType === FieldType.DOUBLE) {
+                  sz = doubleToBinary(args.value, buffer, dataIdx);
+                } else {
+                  sz = encodeUint64(args.value, buffer, dataIdx);
+                }
+              } else {
+                return -1;
+              }
+              break;
             }
-          } else if (sz === 8) {
-            if (type === FieldType.DOUBLE) {
-              sz = doubleToBinary(args.value, buffer, dataIdx);
-            } else {
-              sz = encodeUint64(args.value, buffer, dataIdx);
+            case FieldType.STRING:
+            case FieldType.STRUCT: {
+              args.type = basicType;
+              sz = encodeObject(cb, args, buffer, dataIdx);
+              if (sz < 0) return -1;
+              break;
             }
-          } else {
-            return -1;
+            default:
+              return -1;
           }
         }
 
@@ -771,8 +788,8 @@ const sproto = (() => {
             args.length = 4;
             const sz = cb(args);
             if (sz < 0) {
-              if (sz === -2) break; // SPROTO_CB_NIL
-              if (sz === -3) return 0; // SPROTO_CB_NOARRAY
+              if (sz === -2) break;
+              if (sz === -3) return 0;
               return -1;
             }
             if (sz < 1) return -1;
@@ -818,7 +835,7 @@ const sproto = (() => {
         args.index = index;
         const sz = cb(args);
         if (sz <= 0) {
-          if (sz === -2) break; // SPROTO_CB_NIL
+          if (sz === -2) break;
           if (sz === -3) {
             noarray.value = 1;
             break;
@@ -982,7 +999,7 @@ const sproto = (() => {
         throw new Error("table is too deep");
       }
 
-      if (self.indata[args.tagname] == null) return -2; // SPROTO_CB_NIL
+      if (self.indata[args.tagname] == null) return -2;
 
       let target: any = null;
       if (args.index > 0) {
@@ -994,7 +1011,7 @@ const sproto = (() => {
           }
           if (self.indata[args.tagname] == null || self.indata[args.tagname] === undefined) {
             self.arrayIndex = 0;
-            return -3; // SPROTO_CB_NOARRAY
+            return -3;
           }
         }
         target = self.indata[args.tagname][args.index - 1];
@@ -1051,7 +1068,7 @@ const sproto = (() => {
 
     function decodeCallback(args: any): number {
       const self = args.ud;
-      if (self.deep >= ENCODE_DEEPLEVEL) throw new Error("table is too deep");
+      if (self && self.deep >= ENCODE_DEEPLEVEL) throw new Error("table is too deep");
 
       let value: any;
       switch (args.type) {
@@ -1134,6 +1151,7 @@ const sproto = (() => {
         if (!f) continue;
 
         const args: any = {
+          ud,
           tagname: f.name,
           tagid: f.tag,
           type: f.type & ~SPROTO_TARRAY,
@@ -1194,7 +1212,7 @@ const sproto = (() => {
         }
       }
 
-      return size;
+      return size - remaining;
     }
 
     /* ---------- Utility caches and query helpers ---------- */
@@ -1265,7 +1283,10 @@ const sproto = (() => {
         iterIndex: 3,
       };
       const r = sprotoEncode(st, enbuffer, 0, encodeCallback, ctx);
-      if (r < 0) return null;
+      if (r < 0) {
+        console.error(`[sproto encode] failed to encode type "${st.name}" (retval=${r}). input keys: ${Object.keys(indata).join(', ')}`);
+        return null;
+      }
       return enbuffer;
     };
 
@@ -1308,14 +1329,13 @@ const sproto = (() => {
         // @ts-ignore
         this.session = {};
       }
-      // attach host helpers
       // @ts-ignore
       HostClass.prototype = hostPrototype;
       // @ts-ignore
       return new (HostClass as any)(packageName);
     };
 
-    /* ---------- Host prototype functions (attach/dispatch) ---------- */
+    /* ---------- Host prototype functions ---------- */
 
     hostPrototype.attach = function (attachedSp: any) {
       this.attachsp = attachedSp;
@@ -1332,6 +1352,9 @@ const sproto = (() => {
 
         if (args) {
           const dataBuffer = sp.encode(proto.request, args);
+          if (dataBuffer == null) {
+            throw new Error(`[sproto host.attach] failed to encode request payload for proto "${proto.name}". Check input keys and types.`);
+          }
           return sp.pack(netutils.concatArrays(headerBuffer, dataBuffer));
         } else {
           return sp.pack(headerBuffer);
