@@ -43,6 +43,15 @@ interface SprotoProtocol {
   confirm: number;
 }
 
+interface Host {
+  proto: SprotoInstance;
+  package: SprotoType | string;
+  session: { [key: string]: any };
+  attachsp?: SprotoInstance;
+  attach(attachedSp: SprotoInstance): (name: string | number, args?: any, session?: any) => ByteArray;
+  dispatch(buffer: ByteArray): any;
+}
+
 interface SprotoInstance {
   queryproto(protocolName: string | number): any;
   dump(): void;
@@ -53,7 +62,7 @@ interface SprotoInstance {
   unpack(inbuf: ByteArray): ByteArray;
   pencode(type: any, inbuf: any): ByteArray | null;
   pdecode(type: any, inbuf: any): any | null;
-  host(packagename?: string): any;
+  host(packagename?: string): Host;
 }
 
 /* ---------- Constants ---------- */
@@ -632,13 +641,21 @@ const sproto = (() => {
   };
 
   exportsObj.createNew = function (bundle: ByteArray): SprotoInstance | null {
-    const s: any = {};
-    s.type_n = 0;
-    s.protocol_n = 0;
-    s.type = null;
-    s.proto = null;
-    s.tcache = new Map<string | number, any>();
-    s.pcache = new Map<string | number, any>();
+    const s: {
+      type_n: number;
+      protocol_n: number;
+      type: SprotoType[] | null;
+      proto: SprotoProtocol[] | null;
+      tcache: Map<string | number, any>;
+      pcache: Map<string | number, any>;
+    } = {
+      type_n: 0,
+      protocol_n: 0,
+      type: null,
+      proto: null,
+      tcache: new Map<string | number, any>(),
+      pcache: new Map<string | number, any>()
+    };
 
     const sp = createFromBundle(s, bundle, bundle.length);
     if (sp == null) return null;
@@ -993,7 +1010,35 @@ const sproto = (() => {
 
     /* ---------- High-level encode/decode wrapper callbacks ---------- */
 
-    function encodeCallback(args: any): number {
+    interface EncodeCallbackArgs {
+      ud: any;
+      tagname: string | null;
+      tagid: number;
+      type: number;
+      subtype: SprotoType | null;
+      index: number;
+      mainindex: number;
+      extra: number;
+      value?: any;
+      length?: number;
+      buffer?: ByteArray;
+      buffer_idx?: number;
+    }
+
+    interface DecodeCallbackArgs {
+      ud: any;
+      tagname: string | null;
+      tagid: number;
+      type: number;
+      subtype: SprotoType | null;
+      index: number;
+      mainindex: number;
+      extra: number;
+      value: any;
+      length: number;
+    }
+
+    function encodeCallback(args: EncodeCallbackArgs): number {
       const self = args.ud;
       if (self.deep >= ENCODE_DEEPLEVEL) {
         throw new Error("table is too deep");
@@ -1047,8 +1092,10 @@ const sproto = (() => {
         case FieldType.STRING: {
           const arr: ByteArray = args.extra ? target : netutils.utf8Encode(String(target));
           const sz = arr.length;
-          if (sz > args.length) args.length = sz;
-          for (let i = 0; i < arr.length; i++) args.buffer[args.buffer_idx + i] = arr[i];
+          if (sz > (args.length || 0)) args.length = sz;
+          if (args.buffer && args.buffer_idx !== undefined) {
+            for (let i = 0; i < arr.length; i++) args.buffer[args.buffer_idx + i] = arr[i];
+          }
           return sz;
         }
         case FieldType.STRUCT: {
@@ -1057,16 +1104,19 @@ const sproto = (() => {
             deep: self.deep + 1,
             indata: target,
           };
-          const r = sprotoEncode(args.subtype, args.buffer, args.buffer_idx, encodeCallback, sub);
-          if (r < 0) return -1;
-          return r;
+          if (args.buffer && args.buffer_idx !== undefined && args.subtype) {
+            const r = sprotoEncode(args.subtype, args.buffer, args.buffer_idx, encodeCallback, sub);
+            if (r < 0) return -1;
+            return r;
+          }
+          return -1;
         }
         default:
           throw new Error(`Invalid field type ${args.type}`);
       }
     }
 
-    function decodeCallback(args: any): number {
+    function decodeCallback(args: DecodeCallbackArgs): number {
       const self = args.ud;
       if (self && self.deep >= ENCODE_DEEPLEVEL) throw new Error("table is too deep");
 
@@ -1091,16 +1141,20 @@ const sproto = (() => {
           const sub: any = { deep: self.deep + 1, array_index: 0, array_tag: null, result: {} };
           if (args.mainindex >= 0) {
             sub.mainindex_tag = args.mainindex;
-            const r = sprotoDecode(args.subtype, args.value, args.length, decodeCallback, sub);
-            if (r < 0 || r !== args.length) return r;
-            value = sub.result;
+            if (args.subtype) {
+              const r = sprotoDecode(args.subtype, args.value, args.length, decodeCallback, sub);
+              if (r < 0 || r !== args.length) return r;
+              value = sub.result;
+            }
           } else {
             sub.mainindex_tag = -1;
             sub.key_index = 0;
-            const r = sprotoDecode(args.subtype, args.value, args.length, decodeCallback, sub);
-            if (r < 0) return -1;
-            if (r !== args.length) return r;
-            value = sub.result;
+            if (args.subtype) {
+              const r = sprotoDecode(args.subtype, args.value, args.length, decodeCallback, sub);
+              if (r < 0) return -1;
+              if (r !== args.length) return r;
+              value = sub.result;
+            }
           }
           break;
         }
@@ -1217,7 +1271,7 @@ const sproto = (() => {
 
     /* ---------- Utility caches and query helpers ---------- */
 
-    function queryType(spRef: any, typename: string | number) {
+    function queryType(spRef: any, typename: string | number): SprotoType | null {
       const key = String(typename);
       if (spRef.tcache.has(key)) return spRef.tcache.get(key);
       const tinfo = getTypeByName(spRef, typename as string);
@@ -1228,7 +1282,14 @@ const sproto = (() => {
       return null;
     }
 
-    function getProtocol(spRef: any, pname: string | number) {
+    interface ProtocolInfo {
+      tag: number | null;
+      name: string | null;
+      request: SprotoType | null;
+      response: SprotoType | null;
+    }
+
+    function getProtocol(spRef: any, pname: string | number): ProtocolInfo | null {
       if (spRef.pcache.has(String(pname))) return spRef.pcache.get(String(pname));
 
       let tag: number | null = null;
@@ -1236,17 +1297,17 @@ const sproto = (() => {
 
       if (typeof pname === "number") {
         tag = pname;
-        name = spRef.proto.find((p: any) => p.tag === pname)?.name ?? null;
+        name = spRef.proto.find((p: SprotoProtocol) => p.tag === pname)?.name ?? null;
         if (!name) return null;
       } else {
-        tag = spRef.proto.find((p: any) => p.name === pname)?.tag ?? -1;
+        tag = spRef.proto.find((p: SprotoProtocol) => p.name === pname)?.tag ?? -1;
         name = String(pname);
         if (tag === -1) return null;
       }
 
       const request = queryProtoByTag(spRef, tag!)?.p[0] ?? null;
       const response = queryProtoByTag(spRef, tag!)?.p[1] ?? null;
-      const protoInfo = { tag, name, request, response };
+      const protoInfo: ProtocolInfo = { tag, name, request, response };
       spRef.pcache.set(String(name), protoInfo);
       spRef.pcache.set(String(tag), protoInfo);
       return protoInfo;
@@ -1269,11 +1330,29 @@ const sproto = (() => {
       return sprotoDecode(st, inbuf, inbuf.length, decodeCallback, ud);
     };
 
-    sp.encode = function (type: string | number | SprotoType, indata: any): ByteArray | null {
+    // 定义编码上下文的类型
+    interface EncodeContext {
+      st: SprotoType;
+      tblIndex: number;
+      indata: any;
+      arrayTag: string | null;
+      arrayIndex: number;
+      deep: number;
+      iterIndex: number;
+    }
+
+    // 定义解码上下文的类型
+    interface DecodeContext {
+      arrayTag: string | null;
+      deep: number;
+      result: any;
+    }
+
+    sp.encode = function <T>(type: string | number | SprotoType, indata: T): ByteArray | null {
       const st = typeof type === "string" || typeof type === "number" ? queryType(sp, type) : (type as SprotoType);
       if (st == null) return null;
-      const enbuffer: ByteArray = new Array();
-      const ctx = {
+      const enbuffer: ByteArray = [];
+      const ctx: EncodeContext = {
         st,
         tblIndex: 2,
         indata,
@@ -1284,7 +1363,7 @@ const sproto = (() => {
       };
       const r = sprotoEncode(st, enbuffer, 0, encodeCallback, ctx);
       if (r < 0) {
-        console.error(`[sproto encode] failed to encode type "${st.name}" (retval=${r}). input keys: ${Object.keys(indata).join(', ')}`);
+        console.error(`[sproto encode] failed to encode type "${st.name}" (retval=${r}). input keys: ${indata && typeof indata === 'object' ? Object.keys(indata).join(', ') : 'unknown'}`);
         return null;
       }
       return enbuffer;
@@ -1319,20 +1398,98 @@ const sproto = (() => {
       return sp.decode(type, obuf);
     };
 
-    sp.host = function (packageName?: string) {
+    sp.host = function (packageName?: string): Host {
       const pkg = packageName ?? "package";
-      function HostClass(name?: string) {
-        // @ts-ignore
-        this.proto = sp;
-        // @ts-ignore
-        this.package = queryType(sp, name ?? pkg) ?? "package";
-        // @ts-ignore
-        this.session = {};
+      
+      class HostClass implements Host {
+        proto: SprotoInstance;
+        package: SprotoType | string;
+        session: { [key: string]: any };
+        attachsp?: SprotoInstance;
+
+        constructor(name: string | undefined, spInstance: SprotoInstance) {
+          this.proto = spInstance;
+          this.package = queryType(spInstance as any, name ?? pkg) ?? "package";
+          this.session = {};
+        }
+
+        attach(attachedSp: SprotoInstance) {
+          this.attachsp = attachedSp;
+          return (name: string | number, args?: any, session?: any): ByteArray => {
+            const proto = getProtocol(sp, name);
+            headerTmp.type = proto.tag;
+            headerTmp.session = session;
+
+            const headerBuffer = sp.encode(this.package, headerTmp);
+            if (session) {
+              this.session[session] = proto.response ? proto.response : true;
+            }
+
+            if (args) {
+              const dataBuffer = sp.encode(proto.request, args);
+              if (dataBuffer == null) {
+                throw new Error(`[sproto host.attach] failed to encode request payload for proto "${proto.name}". Check input keys and types.`);
+              }
+              return sp.pack(netutils.concatArrays(headerBuffer, dataBuffer));
+            } else {
+              return sp.pack(headerBuffer);
+            }
+          };
+        }
+
+        dispatch(buffer: ByteArray) {
+          const spLocal = this.proto;
+          const bin = spLocal.unpack(buffer);
+          headerTmp = spLocal.decode(this.package, bin) ?? {};
+          const usedSz = spLocal.objlen(this.package, bin);
+          const leftBuffer = bin.slice((usedSz as number) || 0, bin.length);
+
+          if (headerTmp.type !== undefined) {
+            const proto = getProtocol(spLocal, headerTmp.type);
+            let result;
+            if (proto && proto.request) {
+              result = spLocal.decode(proto.request, leftBuffer);
+            }
+
+            if (headerTmp.session !== undefined) {
+              return {
+                type: "REQUEST",
+                pname: proto?.name,
+                result,
+                responseFunc: genResponse(this, proto?.response || null, headerTmp.session),
+                session: headerTmp.session,
+              };
+            } else {
+              return {
+                type: "REQUEST",
+                pname: proto?.name,
+                result,
+              };
+            }
+          } else {
+            const attached = this.attachsp;
+            const sessionId = headerTmp.session;
+            const response = this.session[sessionId];
+            delete this.session[sessionId];
+
+            if (response === true) {
+              return {
+                type: "RESPONSE",
+                session: sessionId,
+              };
+            } else if (attached) {
+              const result = attached.decode(response, leftBuffer);
+              return {
+                type: "RESPONSE",
+                session: sessionId,
+                result,
+              };
+            }
+          }
+        }
       }
-      // @ts-ignore
-      HostClass.prototype = hostPrototype;
-      // @ts-ignore
-      return new (HostClass as any)(packageName);
+
+      return new HostClass(packageName, sp as SprotoInstance);
     };
 
     /* ---------- Host prototype functions ---------- */
@@ -1362,7 +1519,7 @@ const sproto = (() => {
       };
     };
 
-    function genResponse(selfObj: any, responseType: any, sessionId: any) {
+    function genResponse(selfObj: Host, responseType: SprotoType | null, sessionId: any) {
       return function (args: any) {
         headerTmp.type = null;
         headerTmp.session = sessionId;
@@ -1386,20 +1543,22 @@ const sproto = (() => {
       if (headerTmp.type) {
         const proto = getProtocol(spLocal, headerTmp.type);
         let result;
-        if (proto.request) result = spLocal.decode(proto.request, leftBuffer);
+        if (proto && proto.request) {
+          result = spLocal.decode(proto.request, leftBuffer);
+        }
 
         if (headerTmp.session) {
           return {
             type: "REQUEST",
-            pname: proto.name,
+            pname: proto?.name,
             result,
-            responseFunc: genResponse(this, proto.response, headerTmp.session),
+            responseFunc: genResponse(this, proto?.response || null, headerTmp.session),
             session: headerTmp.session,
           };
         } else {
           return {
             type: "REQUEST",
-            pname: proto.name,
+            pname: proto?.name,
             result,
           };
         }
@@ -1415,7 +1574,7 @@ const sproto = (() => {
             session: sessionId,
           };
         } else {
-          const result = attached.decode(response, leftBuffer);
+          const result = attached?.decode(response, leftBuffer);
           return {
             type: "RESPONSE",
             session: sessionId,
