@@ -41,7 +41,7 @@ try {
   const clientRequest = client.attach(sp);
 
   const data = {
-    token: "test",
+    token: "testtestxxxxxxxxxxxxxxxxxxxxxxxxxxttttttttttttttttttttttttttttttttttesttestxxxxxxxxxxxxxxxxxxxxxxxxxxttttttttttttttttttttttttttttttttt",
     ctx: {
       proto_checksum: "xxxxx",
     },
