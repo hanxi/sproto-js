@@ -6,7 +6,7 @@
  * - Creates sproto instance and demonstrates host/attach/dispatch usage
  *
  * Notes:
- * - We convert Node Buffer -> number[] (ByteArray) via Array.from(buffer) so it matches sproto's expected byte array shape.
+ * - We use Uint8Array directly from Node Buffer for better performance.
  * - This file is intended to be executed directly with Bun (recommended) or with Node after compiling.
  */
 
@@ -22,8 +22,8 @@ try {
     process.exit(1);
   }
 
-  // convert Node Buffer -> number[] (ByteArray)
-  const bundle: number[] = Array.from(raw);
+  // convert Node Buffer -> Uint8Array
+  const bundle: Uint8Array = new Uint8Array(raw);
 
   // create sproto instance from bundle
   const sp = sproto.createNew(bundle);
