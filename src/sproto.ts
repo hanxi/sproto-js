@@ -881,7 +881,7 @@ const sproto = (() => {
       }
 
       if (sz === 4) {
-        const v = args.value;
+        const v = args.value as number;
         buffer[bufferIdx] = v & 0xff;
         buffer[bufferIdx + 1] = (v >> 8) & 0xff;
         buffer[bufferIdx + 2] = (v >> 16) & 0xff;
@@ -908,7 +908,7 @@ const sproto = (() => {
           intlen = 8;
         }
 
-        const v = args.value;
+        const v = args.value as number;
         buffer[bufferIdx] = v & 0xff;
         buffer[bufferIdx + 1] = utils.uint64Rshift(v, 8) & 0xff;
         buffer[bufferIdx + 2] = utils.uint64Rshift(v, 16) & 0xff;
@@ -1465,10 +1465,10 @@ const sproto = (() => {
           {
             let v: number, vh: number;
             if (args.extra! > 0) {
-              const vn = target;
+              const vn = target as number;
               v = Math.floor(vn * args.extra! + 0.5);
             } else {
-              v = target;
+              v = target as number;
             }
             vh = utils.uint64Rshift(v, 31);
             if (vh === 0 || vh === -1) {
@@ -1481,14 +1481,15 @@ const sproto = (() => {
           }
         case CONSTANTS.SPROTO_TDOUBLE:
           {
-            args.value = target;
+            args.value = target as number;
             return 8;
           }
         case CONSTANTS.SPROTO_TBOOLEAN:
           {
-            if (target === true) {
+            const boolValue = target as boolean;
+            if (boolValue === true) {
               args.value = 1;
-            } else if (target === false) {
+            } else if (boolValue === false) {
               args.value = 0;
             }
             return 4;
@@ -1497,9 +1498,9 @@ const sproto = (() => {
           {
             let arr: number[];
             if (args.extra) {
-              arr = target;
+              arr = target as number[];
             } else {
-              const str = target;
+              const str = target as string;
               arr = utils.string2utf8(str);
             }
 
@@ -1517,7 +1518,7 @@ const sproto = (() => {
             const sub: any = {};
             sub.st = args.subtype;
             sub.deep = currentDeep + 1;
-            sub.indata = target;
+            sub.indata = target as Record<string, unknown>;
             const r = sprotoEncode(args.subtype!, args.buffer!, args.buffer_idx!, encode, sub);
             if (r < 0) {
               return CONSTANTS.SPROTO_CB_ERROR;
@@ -1672,10 +1673,10 @@ const sproto = (() => {
         case CONSTANTS.SPROTO_TINTEGER:
           {
             if (args.extra) {
-              const v = args.value;
+              const v = args.value as number;
               value = v / args.extra;
             } else {
-              value = args.value;
+              value = args.value as number;
             }
             break;
           }
@@ -1698,8 +1699,9 @@ const sproto = (() => {
         case CONSTANTS.SPROTO_TSTRING:
           {
             const arr: number[] = [];
+            const valueArray = args.value as number[];
             for (let i = 0; i < args.length!; i++) {
-              arr.push(args.value[i]);
+              arr.push(valueArray[i]);
             }
             if (args.extra) {
               value = arr;
@@ -1718,7 +1720,7 @@ const sproto = (() => {
             sub.result = {};
             if (args.mainindex! >= 0) {
               sub.mainindex_tag = args.mainindex;
-              r = sprotoDecode(args.subtype!, args.value, args.length!, decode, sub);
+              r = sprotoDecode(args.subtype!, args.value as number[], args.length!, decode, sub);
               if (r < 0 || r !== args.length) {
                 return r;
               }
@@ -1727,7 +1729,7 @@ const sproto = (() => {
             } else {
               sub.mainindex_tag = -1;
               sub.key_index = 0;
-              r = sprotoDecode(args.subtype!, args.value, args.length!, decode, sub);
+              r = sprotoDecode(args.subtype!, args.value as number[], args.length!, decode, sub);
               if (r < 0) {
                 return CONSTANTS.SPROTO_CB_ERROR;
               }
