@@ -1922,22 +1922,40 @@ const sproto = (() => {
       return new (cla as any)(packagename);
     };
 
-    host.attach = function (sp: SprotoInstance): (name: string, args: Record<string, unknown>, session: number) => number[] {
+    host.attach = function (sp: SprotoInstance): (name: string, args: Record<string, unknown>, session?: number) => number[] {
       this.attachsp = sp;
       const self = this;
-      return (name: string, args: Record<string, unknown>, session: number): number[] => {
+      return (name: string, args: Record<string, unknown>, session?: number): number[] => {
         const proto = queryProtoFunc(sp, name);
+        if (!proto) {
+          throw new Error('Protocol not found');
+        }
+        if (!proto.request) {
+          throw new Error('Request not found');
+        }
+        if (!self.package) {
+          throw new Error('Package not found');
+        }
+        if (!self.session) {
+          throw new Error('Session not found');
+        }
 
         headerTemp.type = proto.tag;
         headerTemp.session = session;
 
         const headerbuffer = sp.encode(self.package, headerTemp);
-        if (session) {
+        if (headerbuffer === null) {
+          throw new Error('Failed to encode header');
+        }
+        if (session!==undefined) {
           self.session[session] = proto.response ? proto.response : true;
         }
 
         if (args) {
           const databuffer = sp.encode(proto.request, args);
+          if (databuffer === null) {
+            throw new Error('Failed to encode data');
+          }
           return sp.pack(utils.arrayconcat(headerbuffer, databuffer));
         } else {
           return sp.pack(headerbuffer);
