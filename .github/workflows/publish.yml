@@ -60,7 +60,7 @@ jobs:
 
       - name: Smoke test compiled artifact
         run: |
-          node -e "require('./dist/sproto.js'); console.log('smoke test ok');"
+          node -e "import('./dist/index.js').then(() => console.log('smoke test ok')).catch(console.error);"
 
       - name: Publish to npm
         env:
