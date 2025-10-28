@@ -1930,7 +1930,7 @@ const sproto = (() => {
         if (!proto) {
           throw new Error('Protocol not found');
         }
-        if (!proto.request) {
+        if (args && !proto.request) {
           throw new Error('Request not found');
         }
         if (!self.package) {
